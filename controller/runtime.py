@@ -62,8 +62,8 @@ class ControllerRuntime:
                 f"Action Result from {result.node_id} "
                 f"for command {result.command_id}: {result.status.value}"
             )
-            if result.output: # type: ignore
-                logger.debug(f"Command Output: {result.output}") # type: ignore
+            if "output" in result.details:
+                logger.debug(f"Command Output: {result.details['output']}")
         except Exception as e:
             logger.error(f"Failed to process action result payload: {e}")
 
