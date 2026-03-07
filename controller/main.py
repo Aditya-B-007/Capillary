@@ -53,8 +53,7 @@ async def main():
             sig, 
             lambda s=sig: asyncio.create_task(shutdown(s.name, loop, runtime))
         )
-
-    # Block here until this instance becomes the leader
+        
     await messaging_client.connect()
     await messaging_client.claim_leadership(config.leader_lock_name)
 

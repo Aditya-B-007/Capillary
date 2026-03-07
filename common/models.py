@@ -19,16 +19,18 @@ class NodeStatus(str, Enum):
     UNRESPONSIVE = "UNRESPONSIVE"
     UNKNOWN = "UNKNOWN"
     RECOVERING = "RECOVERING"
+    FAILED = "FAILED"
     
 
 class CommandAction(str, Enum):
     RESTART_PROCESS = "RESTART_PROCESS"
     COLLECT_DIAGNOSTICS = "COLLECT_DIAGNOSTICS"
     THROTTLE_WORKLOAD = "THROTTLE_WORKLOAD"
+    SCALE_DOWN = "SCALE_DOWN"
+    SCALE_UP = "SCALE_UP"
 
 
 class ActionResultStatus(str, Enum):
-    """Outcome of a command execution."""
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
     REJECTED_STALE = "REJECTED_STALE"  

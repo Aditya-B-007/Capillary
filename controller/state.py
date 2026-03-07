@@ -3,7 +3,7 @@ import time
 from typing import Dict, Optional
 from dataclasses import dataclass, field
 from collections import deque
-from common.models import TelemetryEvent, CommandAction
+from common.models import TelemetryEvent, CommandAction, ActionResultEvent, ActionResultStatus, NodeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ class NodeRecord:
     mem_window: deque = field(default_factory=lambda: deque(maxlen=5))
     last_command_at: Optional[float] = None
     action_cooldowns: Dict[CommandAction, float] = field(default_factory=dict)
+    current_scale_factor: float = 1.0
+    pending_commands: Dict[str, CommandAction] = field(default_factory=dict)
 
 class ClusterState:
     def __init__(self, timeout_sec: float, memory_window_size: int = 5):
@@ -82,7 +84,7 @@ class ClusterState:
 
         return True
 
-    def record_remediation(self, node_id: str, action: CommandAction, cooldown_sec: float) -> None:
+    def record_remediation(self, node_id: str, action: CommandAction, cooldown_sec: float, command_id: Optional[str] = None) -> None:
         record = self._nodes.get(node_id)
         if not record:
             return
@@ -90,9 +92,27 @@ class ClusterState:
         now = time.monotonic()
         record.last_command_at = now
         record.action_cooldowns[action] = now + cooldown_sec
+        
+        if command_id:
+            record.pending_commands[command_id] = action
+
+    def process_action_result(self, result: ActionResultEvent) -> None:
+        record = self._nodes.get(result.node_id)
+        if not record:
+            return
+
+        action = record.pending_commands.pop(result.command_id, None)
+        if not action or result.status != ActionResultStatus.SUCCESS:
+            return
+
+        # Update state based on the action that succeeded
+        if action == CommandAction.SCALE_DOWN:
+            record.current_scale_factor = 0.5
+        elif action == CommandAction.SCALE_UP:
+            record.current_scale_factor = 1.0
 
     def get_node(self, node_id: str) -> Optional[NodeRecord]:
         return self._nodes.get(node_id)
 
-    def get_all_nodes(self) -> Dict[str, NodeRecord]:
-        return self._nodes.copy()
+    def iter_nodes(self):
+        return self._nodes.items()

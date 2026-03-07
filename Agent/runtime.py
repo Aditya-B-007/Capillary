@@ -6,7 +6,8 @@ from common.models import (
     TelemetryEvent, 
     NodeStatus, 
     CommandEvent, 
-    ActionResultEvent
+    ActionResultEvent,
+    ActionResultStatus
 )
 
 logger = logging.getLogger(__name__)
@@ -20,12 +21,13 @@ class AgentRuntime:
         self.executor = executor
         self._stop_event = asyncio.Event()
         self._telemetry_queue = asyncio.Queue(maxsize=100)
+        self._status = NodeStatus.HEALTHY
         self._tasks = []
 
     async def start(self):
         logger.info("Starting Agent Runtime loops...")
         self._stop_event.clear()
-        await self.messaging.connect() #Connecting to rabbitMQ
+        await self.messaging.connect() #Connecting to redis
         self._tasks.append(asyncio.create_task(self._sampling_loop()))
         self._tasks.append(asyncio.create_task(self._publisher_loop()))
         self._tasks.append(asyncio.create_task(self._command_listener()))
@@ -52,7 +54,7 @@ class AgentRuntime:
                 current_metrics = self.metrics.collect()
                 event = TelemetryEvent(
                     node_id=self.config.agent_id,
-                    status=NodeStatus.HEALTHY,
+                    status=self._status,
                     metrics=current_metrics
                 )
                 try:
@@ -116,7 +118,14 @@ class AgentRuntime:
     async def _handle_command(self, cmd: CommandEvent):
         logger.info(f"Received command {cmd.command_id} [{cmd.action}]")
         
-        result_status, output = await self.executor.execute(cmd)
+        try:
+            result_status, output = await self.executor.execute(cmd)
+            self._status = NodeStatus.HEALTHY
+        except Exception as e:
+            logger.exception(f"Critical failure executing command {cmd.command_id}")
+            result_status = ActionResultStatus.FAILED
+            self._status = NodeStatus.DEGRADED
+            output = f"Internal Executor Error: {str(e)}"
         
         
         result_event = ActionResultEvent(
