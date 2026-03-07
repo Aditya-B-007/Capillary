@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capillary Cluster Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse-slow { animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+    <div class="max-w-7xl mx-auto p-6">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+            <div>
+                <h1 class="text-4xl font-black tracking-tighter text-white">CAPILLARY<span class="text-blue-500">_</span></h1>
+                <p class="text-slate-400 text-sm mt-1">Edge Node Orchestration & Monitoring</p>
+            </div>
+            <div id="connection-status" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold uppercase tracking-widest">
+                <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                Disconnected
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Nodes Section -->
+            <section class="lg:col-span-8">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-bold flex items-center gap-3">
+                        Cluster Nodes
+                        <span id="node-count" class="bg-slate-800 text-slate-400 text-xs px-2 py-1 rounded-md">0</span>
+                    </h2>
+                </div>
+                <div id="nodes-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Node cards injected here -->
+                </div>
+            </section>
+
+            <!-- Sidebar: Action Log -->
+            <aside class="lg:col-span-4">
+                <h2 class="text-xl font-bold mb-6">Recent Actions</h2>
+                <div id="action-log" class="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 h-[calc(100vh-250px)] overflow-y-auto space-y-3 scrollbar-hide">
+                    <div class="text-slate-600 text-center py-10 italic text-sm">Listening for cluster events...</div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        const nodes = new Map();
+        const nodesContainer = document.getElementById('nodes-container');
+        const logContainer = document.getElementById('action-log');
+        const nodeCountEl = document.getElementById('node-count');
+        const connStatusEl = document.getElementById('connection-status');
+
+        function connect() {
+            const ws = new WebSocket(`ws://${window.location.host}/ws/v1/updates`);
+
+            ws.onopen = () => {
+                connStatusEl.innerHTML = '<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>Connected';
+                connStatusEl.className = "flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-bold uppercase tracking-widest";
+                fetch('/api/v1/nodes').then(r => r.json()).then(data => {
+                    data.forEach(n => updateNode(n.node_id, n));
+                });
+            };
+
+            ws.onclose = () => {
+                connStatusEl.innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div>Disconnected';
+                connStatusEl.className = "flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold uppercase tracking-widest";
+                setTimeout(connect, 2000);
+            };
+
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'telemetry') updateNode(msg.data.node_id, msg.data);
+                if (msg.type === 'action_result') logAction(msg.data);
+            };
+        }
+
+        function updateNode(id, data) {
+            let node = nodes.get(id) || { id, cpu: 0, mem: 0 };
+            node.status = data.liveness || data.status || 'ONLINE';
+            if (data.metrics) {
+                node.cpu = data.metrics.cpu_percent;
+                node.mem = data.metrics.memory_percent;
+            }
+            nodes.set(id, node);
+            render();
+        }
+
+        function render() {
+            nodesContainer.innerHTML = '';
+            nodeCountEl.innerText = nodes.size;
+            nodes.forEach(node => {
+                const card = document.createElement('div');
+                const statusColors = {
+                    'ONLINE': 'bg-green-500',
+                    'SUSPECT': 'bg-yellow-500',
+                    'UNRESPONSIVE': 'bg-red-500',
+                    'HEALTHY': 'bg-green-500',
+                    'DEGRADED': 'bg-yellow-500',
+                    'CRITICAL': 'bg-red-500'
+                };
+                const color = statusColors[node.status] || 'bg-slate-500';
+                
+                card.className = "bg-slate-900 border border-slate-800 p-5 rounded-2xl hover:border-slate-700 transition-colors";
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-6">
+                        <span class="font-mono text-sm font-bold text-slate-300">${node.id}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-black text-slate-500 uppercase">${node.status}</span>
+                            <div class="w-2 h-2 rounded-full ${color}"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-[10px] uppercase font-bold text-slate-500 mb-1">
+                                <span>CPU</span><span>${node.cpu.toFixed(1)}%</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-blue-500 transition-all duration-500" style="width: ${node.cpu}%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] uppercase font-bold text-slate-500 mb-1">
+                                <span>Memory</span><span>${node.mem.toFixed(1)}%</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-indigo-500 transition-all duration-500" style="width: ${node.mem}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="restartNode('${node.id}')" class="mt-6 w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all active:scale-95">
+                        Restart Process
+                    </button>
+                `;
+                nodesContainer.appendChild(card);
+            });
+        }
+
+        function logAction(data) {
+            if (logContainer.querySelector('div.italic')) logContainer.innerHTML = '';
+            const el = document.createElement('div');
+            const isSuccess = data.status === 'SUCCESS';
+            el.className = `p-3 rounded-xl border ${isSuccess ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'} text-xs`;
+            el.innerHTML = `
+                <div class="flex justify-between mb-1">
+                    <span class="font-bold ${isSuccess ? 'text-green-400' : 'text-red-400'}">${data.status}</span>
+                    <span class="text-slate-600">${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div class="text-slate-300 font-mono">${data.node_id}</div>
+            `;
+            logContainer.prepend(el);
+        }
+
+        async function restartNode(id) {
+            try {
+                const res = await fetch(`/api/v1/nodes/${id}/restart`, { method: 'POST' });
+                if (!res.ok) throw new Error('Failed to send command');
+                // The result will show up in the "Recent Actions" log via WebSocket
+            } catch (e) {
+                console.error(e);
+                alert(`Error: ${e.message}`);
+            }
+        }
+
+        connect();
+    </script>
+</body>
+</html>

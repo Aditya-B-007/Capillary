@@ -11,6 +11,7 @@ class AgentConfig(BaseModel):
 class ControllerConfig(BaseModel):
     controller_id: str
     broker_url: str
+    web_port: int = 8000
     evaluation_interval_sec: float = 2.0
     node_timeout_sec: float = 15.0
     leader_lock_name: str = "capillary.leader.lock"
@@ -23,6 +24,7 @@ class Settings(BaseSettings):
     controller_id: str = "primary-controller"
     leader_lock_name: str = "capillary.leader.lock"
     log_level: str = "INFO"
+    web_port: int = 8000
     heartbeat_interval_sec: float = 5.0
     evaluation_interval_sec: float = 2.0
     node_timeout_sec: float = 15.0

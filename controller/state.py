@@ -114,5 +114,8 @@ class ClusterState:
     def get_node(self, node_id: str) -> Optional[NodeRecord]:
         return self._nodes.get(node_id)
 
+    def get_all_nodes(self) -> Dict[str, NodeRecord]:
+        return self._nodes.copy()
+
     def iter_nodes(self):
         return self._nodes.items()

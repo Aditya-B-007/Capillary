@@ -1,7 +1,7 @@
 import asyncio
 import time
 import logging
-from typing import Any
+from typing import Any, Set
 from common.models import TelemetryEvent, ActionResultEvent
 from controller.state import ClusterState
 from controller.rules import RuleEngine, ActionIntent
@@ -27,6 +27,7 @@ class ControllerRuntime:
         
         self._stop_event = asyncio.Event()
         self._tasks = []
+        self._ws_broadcast_queues: Set[asyncio.Queue] = set()
 
     async def start(self) -> None:
         logger.info("Starting Controller Runtime...")
@@ -48,10 +49,24 @@ class ControllerRuntime:
             
         await self.messaging.disconnect()
 
+    def register_ws_queue(self, queue: asyncio.Queue) -> None:
+        self._ws_broadcast_queues.add(queue)
+
+    def unregister_ws_queue(self, queue: asyncio.Queue) -> None:
+        self._ws_broadcast_queues.discard(queue)
+
+    def _broadcast(self, message: dict) -> None:
+        for queue in self._ws_broadcast_queues:
+            try:
+                queue.put_nowait(message)
+            except asyncio.QueueFull:
+                pass
+
     async def _on_telemetry(self, payload: str) -> None:
         try:
             event = TelemetryEvent.model_validate_json(payload)
             self.state.process_telemetry(event)
+            self._broadcast({"type": "telemetry", "data": event.model_dump()})
         except Exception as e:
             logger.error(f"Failed to process telemetry payload: {e}")
 
@@ -64,6 +79,7 @@ class ControllerRuntime:
             )
             
             self.state.process_action_result(result)
+            self._broadcast({"type": "action_result", "data": result.model_dump()})
             
             if "output" in result.details:
                 logger.debug(f"Command Output: {result.details['output']}")

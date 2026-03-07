@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /
 RUN useradd -m -u 1000 appuser && chown appuser:appuser /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt fastapi uvicorn websockets
 
 COPY --chown=appuser:appuser common/ ./common/
 COPY --chown=appuser:appuser controller/ ./controller/
