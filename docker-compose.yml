@@ -18,6 +18,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    ports:
+      - "8080:8000"
     environment:
       - BROKER_URL=redis://redis:6379/0
 
@@ -39,8 +41,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    ports:
-      - "8080:8000"
     environment:
       - BROKER_URL=redis://redis:6379/0
       - AGENT_ID=agent-beta

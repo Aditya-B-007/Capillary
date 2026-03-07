@@ -4,6 +4,7 @@ import signal
 import sys
 from typing import Set, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
 from common.config import settings, ControllerConfig
@@ -51,6 +52,10 @@ async def main():
     dispatcher = CommandDispatcher(messaging_client=messaging_client)
 
     app = FastAPI(title="Capillary Controller API")
+
+    @app.get("/")
+    async def get_dashboard():
+        return FileResponse("controller/index.html")
 
     @app.get("/api/v1/nodes")
     async def get_nodes():
