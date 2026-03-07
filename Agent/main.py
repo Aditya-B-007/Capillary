@@ -2,7 +2,6 @@ import asyncio
 import logging
 import signal
 import sys
-import socket
 from typing import Set
 from common.config import settings, AgentConfig
 from common.messaging import create_messaging_client  # Factory function for transport
@@ -22,14 +21,13 @@ async def shutdown(signal_name: str, loop: asyncio.AbstractEventLoop, runtime: A
     await runtime.stop()
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     [task.cancel() for task in tasks]
-    
     logger.info(f"Cancelling {len(tasks)} outstanding tasks")
     await asyncio.gather(*tasks, return_exceptions=True)
     logger.info("Agent shutdown complete.")
 
 async def main():
     config = AgentConfig(
-        agent_id=socket.gethostname(), 
+        agent_id=settings.node_id, 
         broker_url=settings.broker_url,
         heartbeat_interval_sec=settings.heartbeat_interval_sec
     )
