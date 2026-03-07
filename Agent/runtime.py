@@ -25,7 +25,7 @@ class AgentRuntime:
     async def start(self):
         logger.info("Starting Agent Runtime loops...")
         self._stop_event.clear()
-        await self.messaging.connect() #Connecting to Redis
+        await self.messaging.connect() #Connecting to rabbitMQ
         self._tasks.append(asyncio.create_task(self._sampling_loop()))
         self._tasks.append(asyncio.create_task(self._publisher_loop()))
         self._tasks.append(asyncio.create_task(self._command_listener()))
@@ -123,7 +123,7 @@ class AgentRuntime:
             command_id=cmd.command_id,
             node_id=self.config.agent_id,
             status=result_status,
-            details=output)
+            details={"output": output})
     
         try:
             await self.messaging.publish(
