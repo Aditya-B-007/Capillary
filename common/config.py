@@ -1,5 +1,6 @@
 import os
-from pydantic import BaseModel
+import uuid
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class AgentConfig(BaseModel):
@@ -15,10 +16,10 @@ class ControllerConfig(BaseModel):
     leader_lock_name: str = "capillary.leader.lock"
 
 class Settings(BaseSettings):
-    broker_url: str = "redis://localhost:6379/0"
+    broker_url: str = os.getenv("BROKER_URL", "redis://localhost:6379")
     exchange_name: str = "capillary.events"
     service_name: str = "base-service"
-    node_id: str = os.getenv("HOSTNAME", "unknown-node")
+    node_id: str = Field(default_factory=lambda: os.getenv("HOSTNAME") or f"agent-{uuid.uuid4().hex[:8]}")
     controller_id: str = "primary-controller"
     leader_lock_name: str = "capillary.leader.lock"
     log_level: str = "INFO"
