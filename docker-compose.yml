@@ -23,24 +23,14 @@ services:
     environment:
       - BROKER_URL=redis://redis:6379/0
 
-  agent-alpha:
+  agent:
     build:
       context: .
-      dockerfile: Dockerfile.agent
+      dockerfile: Agent/Dockerfile
     depends_on:
       redis:
         condition: service_healthy
     environment:
       - BROKER_URL=redis://redis:6379/0
-      - AGENT_ID=agent-alpha
-
-  agent-beta:
-    build:
-      context: .
-      dockerfile: Dockerfile.agent 
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - BROKER_URL=redis://redis:6379/0
-      - AGENT_ID=agent-beta
+    deploy:
+      replicas: 2 
