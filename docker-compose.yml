@@ -1,5 +1,4 @@
 version: '3.11'
-
 services:
   redis:
     image: redis:alpine
@@ -10,7 +9,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
   controller:
     build:
       context: .
@@ -32,5 +30,3 @@ services:
         condition: service_healthy
     environment:
       - BROKER_URL=redis://redis:6379/0
-    deploy:
-      replicas: 2 
