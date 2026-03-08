@@ -5,7 +5,7 @@ RUN useradd -m -u 1000 appuser && chown appuser:appuser /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=appuser:appuser common/ ./common/
-COPY --chown=appuser:appuser agent/ ./agent/
+COPY --chown=appuser:appuser Agent/ ./Agent/
 ENV PYTHONPATH=/app
 USER appuser
-CMD ["python", "-m", "agent.main"]
+CMD ["python", "-m", "Agent.main"]
