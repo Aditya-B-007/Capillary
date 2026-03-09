@@ -1,4 +1,5 @@
 import logging
+import time
 from common.models import CommandEvent, CommandActionPayload
 from common.messaging import MessageBroker
 from controller.rules import ActionIntent
@@ -10,7 +11,7 @@ class CommandDispatcher:
     def __init__(self, messaging_client: MessageBroker, cooldown_sec: float = 30.0):
         self.messaging = messaging_client
         self.cooldown_sec = cooldown_sec
-        self.current_epoch = int(uuid.uuid4().hex)
+        self.current_epoch = int(time.time())
 
     async def dispatch(self, intent: ActionIntent, state: ClusterState) -> None:
         agent_id = intent.agent_id

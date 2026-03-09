@@ -5,9 +5,9 @@ import sys
 from typing import Set
 from common.config import settings, AgentConfig
 from common.messaging import create_messaging_client  # Factory function for transport
-from metrics import MetricsCollector
-from executor import CommandExecutor
-from runtime import AgentRuntime
+from Agent.metrics import MetricsCollector
+from Agent.executor import CommandExecutor
+from Agent.runtime import AgentRuntime
 
 logging.basicConfig(
     level=logging.INFO,
