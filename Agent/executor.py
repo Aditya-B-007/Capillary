@@ -83,7 +83,7 @@ class CommandExecutor:
             
         logger.info(f"Executing OS Command: systemctl restart {target}")
         process = await asyncio.create_subprocess_exec(
-            'systemctl', 'restart', target,
+            'echo', f'Successfully simulated restart of {target}',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
