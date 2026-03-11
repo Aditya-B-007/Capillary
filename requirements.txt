@@ -5,3 +5,6 @@ pydantic-settings
 redis
 psutil
 websockets
+numpy
+rrcf
+eif
