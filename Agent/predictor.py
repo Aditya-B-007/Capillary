@@ -1,9 +1,9 @@
 import asyncio
 import numpy as np
 from collections import deque
-from sklearn.decomposition import IncrementalPCA
-import rrcf
-import eif
+from sklearn.decomposition import IncrementalPCA # type: ignore
+import rrcf # type: ignore
+import eif # type: ignore
 
 class FeatureExtractor:
     @staticmethod
@@ -78,7 +78,7 @@ class DomainModel:
         z = (x - self.mean) / self.std
 
         # Incremental PCA
-        if len(self.buffer) >= self.pca.n_components:
+        if len(self.buffer) >= self.pca.n_components_:
             self.pca.partial_fit(z.reshape(1, -1))
             self.is_pca_ready = True
 
@@ -121,11 +121,12 @@ class DomainModel:
     async def score(self, z, rcf_score):
         eif_score = 0
 
-        if self.eif_model:
+        model = self.eif_model
+        if model is not None:
             loop = asyncio.get_running_loop()
             eif_score = await loop.run_in_executor(
                 None,
-                lambda: self.eif_model.compute_paths(
+                lambda: model.compute_paths(
                     X_in=z.reshape(1, -1)
                 )[0]
             )
@@ -139,10 +140,6 @@ class DomainModel:
         # persistence logic
         return sum(self.recent_flags) >= 3
 
-
-# ---------------------------
-# Multi Domain Predictor
-# ---------------------------
 class MultiDomainPredictor:
     def __init__(self):
         self.domains = {
