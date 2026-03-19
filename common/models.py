@@ -39,8 +39,34 @@ class ActionResultStatus(str, Enum):
 class Metrics(BaseModel):
     cpu_percent: float = Field(..., ge=0.0, le=100.0)
     memory_percent: float = Field(..., ge=0.0, le=100.0)
+    swap_usage: float = Field(0.0, ge=0.0, le=100.0)
+    page_faults: int = Field(0, ge=0) # System-wide page faults are hard to get directly from psutil
+    memory_psi: float = Field(0.0, ge=0.0, le=100.0) # Pressure Stall Information (Linux-specific)
     disk_percent: float = Field(..., ge=0.0, le=100.0)
-    active_processes: int = Field(..., ge=0)
+    disk_iops: int = Field(0, ge=0)
+    disk_latency: float = Field(0.0, ge=0.0) # Hard to get generically
+    disk_util: float = Field(0.0, ge=0.0, le=100.0) # Hard to get generically
+    net_in: int = Field(0, ge=0)
+    net_out: int = Field(0, ge=0)
+    packet_drops: int = Field(0, ge=0) # Hard to get generically
+    tcp_retransmits: int = Field(0, ge=0) # Hard to get generically
+    load_1m: float = Field(0.0, ge=0.0)
+    load_5m: float = Field(0.0, ge=0.0)
+    load_15m: float = Field(0.0, ge=0.0)
+    cpu_steal: float = Field(0.0, ge=0.0, le=100.0)
+    cpu_user: float = Field(0.0, ge=0.0, le=100.0)
+    cpu_system: float = Field(0.0, ge=0.0, le=100.0)
+    context_switches: int = Field(0, ge=0)
+    interrupts: int = Field(0, ge=0)
+    fd_usage: float = Field(0.0, ge=0.0, le=100.0) # File descriptor usage (system-wide is hard)
+    process_count: int = Field(..., ge=0) # Renamed from active_processes
+    thread_count: int = Field(0, ge=0) # System-wide thread count is hard to get efficiently
+    zombie_processes: int = Field(0, ge=0)
+    uptime: float = Field(0.0, ge=0.0)
+    disk_health: float = Field(0.0, ge=0.0, le=1.0) # Placeholder for SMART data etc.
+    temperature: float = Field(0.0) # Requires specific sensors
+    fan_speed: float = Field(0.0) # Requires specific sensors
+    power_usage: float = Field(0.0) # Requires specific sensors
 
 
 class ProcessInfo(BaseModel):
