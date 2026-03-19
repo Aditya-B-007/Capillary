@@ -1,110 +1,189 @@
 import asyncio
-import logging
 import numpy as np
-import rrcf #type: ignore
-import eif # type: ignore
 from collections import deque
-from typing import Literal
-from common.models import Metrics
+from sklearn.decomposition import IncrementalPCA
+import rrcf
+import eif
 
-logger = logging.getLogger(__name__)
+class FeatureExtractor:
+    @staticmethod
+    def cpu(m):
+        return np.array([
+            m.cpu_percent,
+            m.load_1m,
+            m.load_5m,
+            m.load_15m,
+            m.cpu_steal,
+            m.cpu_user,
+            m.cpu_system,
+            m.context_switches,
+            m.interrupts
+        ])
 
-class EnsemblePredictor:
-    def __init__(
-        self, 
-        window_size: int = 256, 
-        num_trees: int = 100, 
-        rcf_threshold: float = 3.5,
-        eif_threshold: float = 0.75
-    ):
-        self.window_size = window_size
-        self.num_trees = num_trees
-        self.rcf_threshold = rcf_threshold
-        self.eif_threshold = eif_threshold
-        self.data_buffer = deque(maxlen=window_size)
+    @staticmethod
+    def memory(m):
+        return np.array([
+            m.memory_percent,
+            m.swap_usage,
+            m.page_faults,
+            m.memory_psi
+        ])
+
+    @staticmethod
+    def disk(m):
+        return np.array([
+            m.disk_percent,
+            m.disk_iops,
+            m.disk_latency,
+            m.disk_util
+        ])
+
+    @staticmethod
+    def network(m):
+        return np.array([
+            m.net_in,
+            m.net_out,
+            m.packet_drops,
+            m.tcp_retransmits
+        ])
+
+class DomainModel:
+    def __init__(self, feature_dim, window_size=256, num_trees=50):
+        self.buffer = deque(maxlen=window_size)
+        self.mean = np.zeros(feature_dim)
+        self.std = np.ones(feature_dim)
+
+        self.pca = IncrementalPCA(n_components=min(5, feature_dim))
+        self.is_pca_ready = False
+
         self.rcf = rrcf.RCForest(num_trees=num_trees, tree_size=window_size)
         self.eif_model = None
-        self.is_primed = False
-        self._rolling_mean = np.zeros(4)
-        self._rolling_std = np.ones(4)
+
         self._is_retraining = False
-        self._step_counter = 0
+        self.is_primed = False
+        self.step = 0
 
-    async def predict(self, metrics: Metrics) -> Literal["NORMAL", "ANOMALY", "LEARNING"]:
-        features = np.array([
-            metrics.cpu_percent, 
-            metrics.memory_percent, 
-            metrics.disk_percent, 
-            float(metrics.active_processes)
-        ])
-        
-        self.data_buffer.append(features)
+        # persistence tracking
+        self.recent_flags = deque(maxlen=5)
 
-        # Update rolling statistics to provide baseline context
-        if len(self.data_buffer) > 1:
-            snapshot = np.array(self.data_buffer)
-            self._rolling_mean = np.mean(snapshot, axis=0)
-            self._rolling_std = np.std(snapshot, axis=0) + 1e-6
+    def update(self, x):
+        self.buffer.append(x)
+        self.step += 1
 
-        loop = asyncio.get_running_loop()
-        self._step_counter += 1
-        self.rcf.update(features)
-        rcf_score = self.rcf.codisp() / self.num_trees if len(self.data_buffer) > 10 else 0
-        
-        eif_score = 0.0
-        if len(self.data_buffer) >= self.window_size:
-            if (not self.eif_model or self._step_counter % 500 == 0) and not self._is_retraining:
-                asyncio.create_task(self._retrain_eif())
-            model = self.eif_model
-            if model:
-                z_features = (features - self._rolling_mean) / self._rolling_std
-                
-                eif_score = await loop.run_in_executor(
-                    None, 
-                    lambda: model.compute_paths(X_in=z_features.reshape(1, -1))[0]
-                )
+        if len(self.buffer) > 10:
+            data = np.array(self.buffer)
+            self.mean = np.mean(data, axis=0)
+            self.std = np.std(data, axis=0) + 1e-6
 
-        return self._evaluate_ensemble(rcf_score, eif_score)
+        z = (x - self.mean) / self.std
 
-    async def _retrain_eif(self):
-        if self._is_retraining:
+        # Incremental PCA
+        if len(self.buffer) >= self.pca.n_components:
+            self.pca.partial_fit(z.reshape(1, -1))
+            self.is_pca_ready = True
+
+        if self.is_pca_ready:
+            z = self.pca.transform(z.reshape(1, -1))[0]
+
+        # RCF update
+        self.rcf.update(z)
+        rcf_score = self.rcf.codisp() / 50 if len(self.buffer) > 10 else 0
+
+        return z, rcf_score
+
+    async def retrain_eif(self):
+        if self._is_retraining or len(self.buffer) < 20:
             return
 
         self._is_retraining = True
         try:
-            data_matrix = np.array(self.data_buffer)
-            mean = np.mean(data_matrix, axis=0)
-            std = np.std(data_matrix, axis=0) + 1e-6
-            z_matrix = (data_matrix - mean) / std
+            data = np.array(self.buffer)
+            z = (data - self.mean) / self.std
+
+            if self.is_pca_ready:
+                z = self.pca.transform(z)
 
             loop = asyncio.get_running_loop()
             self.eif_model = await loop.run_in_executor(
-                None, 
+                None,
                 lambda: eif.iForest(
-                    z_matrix, 
-                    ntrees=self.num_trees, 
-                    sample_size=self.window_size, 
-                    ExtensionLevel=3 
+                    z,
+                    ntrees=50,
+                    sample_size=len(z),
+                    ExtensionLevel=2
                 )
             )
+
             self.is_primed = True
-            logger.info("EIF model successfully updated in background.")
-        except Exception as e:
-            logger.error(f"EIF background training failed: {e}")
         finally:
             self._is_retraining = False
 
-    def _evaluate_ensemble(self, rcf_score: float, eif_score: float) -> Literal["NORMAL", "ANOMALY", "LEARNING"]:
-        if not self.is_primed:
-            return "LEARNING"
-        is_rcf_anomaly = rcf_score > self.rcf_threshold
-        is_eif_anomaly = eif_score > self.eif_threshold
+    async def score(self, z, rcf_score):
+        eif_score = 0
 
-        if is_rcf_anomaly or is_eif_anomaly:
-            logger.warning(
-                f"Ensemble Anomaly Detected | RCF: {rcf_score:.2f} (>{self.rcf_threshold}) "
-                f"| EIF: {eif_score:.3f} (>{self.eif_threshold})"
+        if self.eif_model:
+            loop = asyncio.get_running_loop()
+            eif_score = await loop.run_in_executor(
+                None,
+                lambda: self.eif_model.compute_paths(
+                    X_in=z.reshape(1, -1)
+                )[0]
             )
+
+        return rcf_score, eif_score
+
+    def is_anomaly(self, rcf, eif, rcf_th=3.5, eif_th=0.75):
+        flag = int(rcf > rcf_th or eif > eif_th)
+        self.recent_flags.append(flag)
+
+        # persistence logic
+        return sum(self.recent_flags) >= 3
+
+
+# ---------------------------
+# Multi Domain Predictor
+# ---------------------------
+class MultiDomainPredictor:
+    def __init__(self):
+        self.domains = {
+            "cpu": DomainModel(9),
+            "memory": DomainModel(4),
+            "disk": DomainModel(4),
+            "network": DomainModel(4),
+        }
+
+        self.weights = {
+            "cpu": 1,
+            "memory": 2,
+            "disk": 3,
+            "network": 2
+        }
+
+        self.step = 0
+
+    async def predict(self, metrics):
+        self.step += 1
+        total_score = 0
+
+        for name, model in self.domains.items():
+            extractor = getattr(FeatureExtractor, name)
+            x = extractor(metrics)
+
+            z, rcf = model.update(x)
+            rcf, eif_score = await model.score(z, rcf)
+
+            # periodic retrain
+            if self.step % 200 == 0:
+                asyncio.create_task(model.retrain_eif())
+
+            if model.is_primed and model.is_anomaly(rcf, eif_score):
+                total_score += self.weights[name]
+
+        # decision
+        if total_score >= 3:
             return "ANOMALY"
+
+        if not all(m.is_primed for m in self.domains.values()):
+            return "LEARNING"
 
         return "NORMAL"
