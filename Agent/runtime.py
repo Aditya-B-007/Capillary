@@ -14,14 +14,14 @@ from common.models import (
 logger = logging.getLogger(__name__)
 
 
-from Agent.predictor import MultiDomainPredictor
+from Agent.predictor_light import LightweightPredictor
 class AgentRuntime:
     def __init__(self, config: Any, messaging: Any, metrics: Any, executor: Any):
         self.config = config
         self.messaging = messaging
         self.metrics = metrics
         self.executor = executor
-        self.predictor = MultiDomainPredictor() # Initialize the predictor
+        self.predictor = LightweightPredictor() 
         self._stop_event = asyncio.Event()
         self._telemetry_queue = asyncio.Queue(maxsize=100)
         self._status = NodeStatus.HEALTHY
@@ -55,7 +55,7 @@ class AgentRuntime:
             try:
                 
                 current_metrics = self.metrics.collect()
-                prediction_result = await self.predictor.predict(current_metrics)
+                prediction_result = self.predictor.predict(current_metrics)
                 logger.debug(f"Anomaly prediction for {self.config.agent_id}: {prediction_result}")
 
                 event = TelemetryEvent(
