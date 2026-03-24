@@ -74,8 +74,8 @@ class ControllerRuntime:
             self._broadcast({"type": "telemetry", "data": event.model_dump()})
             prediction_payload = {
                 "metrics": event.metrics,
-                "anomaly": False, # Future enhancement: pull lightweight anomaly flag from event
-                "domain_scores": {} 
+                "anomaly": event.is_anomaly,
+                "domain_scores": event.domain_scores 
             }
             await self.predictor.process_agent_payload(prediction_payload)
             
