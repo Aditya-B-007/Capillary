@@ -53,12 +53,21 @@ class ClusterState:
         record.cpu_window.append(event.metrics.cpu_percent)
         record.mem_window.append(event.metrics.memory_percent)
 
-    def evaluate_liveness(self) -> None:
+    def evaluate_liveness(self, active_agents: Optional[set] = None) -> None:
         now = time.monotonic()
         dead_nodes = []
 
         for node_id, record in self._nodes.items():
             elapsed = now - record.last_seen_monotonic
+
+            # Use Redis TTL registration as the primary liveness indicator if available
+            if active_agents is not None and node_id not in active_agents:
+                if record.liveness != LivenessState.UNRESPONSIVE:
+                    logger.warning(f"{node_id} registration TTL expired in Redis. Marking UNRESPONSIVE.")
+                record.liveness = LivenessState.UNRESPONSIVE
+                if elapsed >= self.eviction_sec:
+                    dead_nodes.append(node_id)
+                continue
 
             if elapsed >= self.eviction_sec:
                 dead_nodes.append(node_id)

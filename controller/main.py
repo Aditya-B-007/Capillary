@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import signal
+import socket
 import sys
 from typing import Set, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -26,6 +28,24 @@ class ManualCommandRequest(BaseModel):
     node_id: str
     action: CommandAction
     parameters: Dict[str, Any] = {}
+
+async def broadcast_presence(redis_url: str):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    host = redis_url.split("://")[1].split(":")[0]
+    
+    message = {
+        "type": "CONTROLLER_ANNOUNCE",
+        "redis_host": host,
+        "redis_port": 6379
+    }
+    
+    while True:
+        try:
+            sock.sendto(json.dumps(message).encode(), ("255.255.255.255", 9999))
+        except Exception as e:
+            logger.debug(f"Broadcast failed: {e}")
+        await asyncio.sleep(2)  # Non-blocking sleep
 
 async def shutdown(signal_name: str, loop: asyncio.AbstractEventLoop, runtime: ControllerRuntime):
     logger.info(f"Received exit signal {signal_name}, initiating graceful shutdown...")
@@ -132,7 +152,10 @@ async def main():
 
     api_config = uvicorn.Config(app, host="0.0.0.0", port=config.web_port, log_level="info")
     api_server = uvicorn.Server(api_config)
+    
+    # Start background tasks
     asyncio.create_task(api_server.serve())
+    asyncio.create_task(broadcast_presence(config.broker_url))
         
     await messaging_client.connect()
     await messaging_client.claim_leadership(config.leader_lock_name)

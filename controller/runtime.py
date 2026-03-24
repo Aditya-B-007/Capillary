@@ -102,7 +102,8 @@ class ControllerRuntime:
             cycle_start = time.monotonic()
             
             try:
-                self.state.evaluate_liveness()
+                active_agents = await self.messaging.get_active_agents()
+                self.state.evaluate_liveness(active_agents)
                 intents = self.rules.evaluate_cluster(self.state)
                 for intent in intents:
                     task = asyncio.create_task(self._safe_dispatch(intent))

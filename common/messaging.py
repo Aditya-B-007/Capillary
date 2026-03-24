@@ -27,6 +27,10 @@ class MessageBroker(abc.ABC):
     async def claim_leadership(self, lock_name: str) -> None:
         pass
 
+    @abc.abstractmethod
+    async def get_active_agents(self) -> Optional[set]:
+        pass
+
 class RedisMessagingClient(MessageBroker):
     def __init__(self, broker_url: str):
         self.broker_url = broker_url
@@ -117,6 +121,16 @@ class RedisMessagingClient(MessageBroker):
                 break
             except Exception as e:
                 logger.error(f"Error refreshing leadership lock {lock_name}: {e}. Retrying...")
+
+    async def get_active_agents(self) -> Optional[set]:
+        if not self._redis:
+            return None
+        try:
+            keys = await self._redis.keys("agent:*")
+            return {k.split(":", 1)[1] for k in keys}
+        except Exception as e:
+            logger.error(f"Error fetching active agents: {e}")
+            return None
 
 def create_messaging_client(broker_url: str) -> MessageBroker:
     if broker_url.startswith("redis://") or broker_url.startswith("rediss://"):
