@@ -90,6 +90,8 @@ class TelemetryEvent(HeartbeatEvent):
     message_type: MessageType = MessageType.TELEMETRY
     metrics: Metrics
     process_state: Dict[str, ProcessInfo] = Field(default_factory=dict)
+    is_anomaly: bool = False
+    domain_scores: Dict[str, float] = Field(default_factory=dict)
 
 
 class CommandActionPayload(BaseModel):
