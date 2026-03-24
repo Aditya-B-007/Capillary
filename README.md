@@ -1,4 +1,3 @@
-Capillary
 Capillary is a distributed system monitoring and control platform designed to run lightweight agents on multiple edge nodes. It aggregates system state, detects abnormal behavior using multi-tiered Machine Learning (Lightweight RCF on the edge, Heavyweight PCA/EIF on the controller), and executes safe corrective actions through a centralized controller.
 
 🌟 Key Features
