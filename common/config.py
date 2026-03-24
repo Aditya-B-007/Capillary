@@ -3,6 +3,13 @@ import uuid
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+class RuleConfig(BaseModel):
+    target_process: str = "worker_process"
+    high_mem_threshold: float = 92.0
+    high_cpu_threshold: float = 85.0
+    low_cpu_threshold: float = 30.0
+    scale_down_factor: float = 0.5
+
 class AgentConfig(BaseModel):
     agent_id: str
     broker_url: str
@@ -15,6 +22,7 @@ class ControllerConfig(BaseModel):
     evaluation_interval_sec: float = 2.0
     node_timeout_sec: float = 15.0
     leader_lock_name: str = "capillary.leader.lock"
+    rules: RuleConfig = RuleConfig()
 
 class Settings(BaseSettings):
     broker_url: str = os.getenv("BROKER_URL", "redis://localhost:6379")

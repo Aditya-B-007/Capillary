@@ -1,11 +1,114 @@
+import abc
 import asyncio
 import json
 import logging
 import os
-from typing import Tuple, Set
+import sys
+from typing import Tuple, Set, List
 from common.models import CommandEvent, CommandAction, ActionResultStatus
 
 logger = logging.getLogger(__name__)
+
+
+class ActionHandler(abc.ABC):
+    @abc.abstractmethod
+    async def execute(self, payload: dict) -> Tuple[ActionResultStatus, str]:
+        """Executes the specific action and returns the status and output string."""
+        pass
+
+
+class RestartProcessHandler(ActionHandler):
+    def _get_restart_command(self, target: str) -> List[str]:
+        if sys.platform == "win32":
+            return ['cmd.exe', '/c', f'echo Successfully simulated restart of {target}']
+        return ['echo', f'Successfully simulated restart of {target}']
+
+    async def execute(self, payload: dict) -> Tuple[ActionResultStatus, str]:
+        target = payload.get("target")
+        if not target:
+            return ActionResultStatus.FAILED, "Missing 'target' in payload."
+            
+        logger.info(f"Executing OS Command: restart {target}")
+        cmd_args = self._get_restart_command(target)
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
+        except FileNotFoundError:
+            return ActionResultStatus.FAILED, f"Restart command executable not found for {sys.platform}."
+        except asyncio.TimeoutError:
+            process.kill() # type: ignore
+            await process.wait() # type: ignore
+            logger.error(f"Timeout restarting process {target}")
+            return ActionResultStatus.FAILED, f"Restart command for {target} timed out."
+
+        if process.returncode == 0:
+            return ActionResultStatus.SUCCESS, f"Process {target} restarted successfully."
+        else:
+            error_msg = stderr.decode().strip() or stdout.decode().strip()
+            return ActionResultStatus.FAILED, f"Failed to restart {target}: {error_msg}"
+
+
+class CollectDiagnosticsHandler(ActionHandler):
+    def _get_diagnostic_commands(self) -> Tuple[List[str], List[str], List[str]]:
+        if sys.platform.startswith("linux"):
+            return (
+                ['uptime'],
+                ['free', '-m'],
+                ['journalctl', '-n', '20', '--no-pager']
+            )
+        elif sys.platform == "darwin":
+            return (
+                ['uptime'],
+                ['vm_stat'],
+                ['tail', '-n', '20', '/var/log/system.log']
+            )
+        else:
+            return (
+                ['cmd.exe', '/c', 'echo Uptime not supported on Windows'],
+                ['cmd.exe', '/c', 'echo Memory diagnostics not supported on Windows'],
+                ['cmd.exe', '/c', 'echo Log collection not supported on Windows']
+            )
+
+    async def execute(self, payload: dict) -> Tuple[ActionResultStatus, str]:
+        level = payload.get("level", "standard")
+        logger.info(f"Executing OS Command: Gathering {level} diagnostics...")
+        
+        uptime_cmd, free_cmd, logs_cmd = self._get_diagnostic_commands()
+
+        try:
+            p_uptime = await asyncio.create_subprocess_exec(*uptime_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            p_free = await asyncio.create_subprocess_exec(*free_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            p_logs = await asyncio.create_subprocess_exec(*logs_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.gather(p_uptime.communicate(), p_free.communicate(), p_logs.communicate()),
+                    timeout=10.0
+                )
+                (out_uptime, _), (out_free, _), (out_logs, _) = results
+            except asyncio.TimeoutError:
+                for p in [p_uptime, p_free, p_logs]:
+                    try:
+                        p.kill()
+                        await p.wait()
+                    except Exception: pass
+                return ActionResultStatus.FAILED, "Diagnostic collection timed out."
+
+            output = (
+                f"Diagnostic report ({level}):\n"
+                f"- Load Average: {out_uptime.decode().strip()}\n"
+                f"- Memory/Swap Usage:\n{out_free.decode().strip()}\n"
+                f"- Recent Logs:\n{out_logs.decode().strip()}"
+            )
+            return ActionResultStatus.SUCCESS, output
+        except FileNotFoundError as e:
+            return ActionResultStatus.FAILED, f"Diagnostic command not found on {sys.platform}: {str(e)}"
+        except Exception as e:
+            return ActionResultStatus.FAILED, f"Failed to collect diagnostics: {str(e)}"
 
 
 class CommandExecutor:
@@ -13,6 +116,10 @@ class CommandExecutor:
         self.state_file = state_file
         self._executed_commands: Set[str] = set()
         self._highest_seen_epoch: int = 0
+        self._handlers = {
+            CommandAction.RESTART_PROCESS: RestartProcessHandler(),
+            CommandAction.COLLECT_DIAGNOSTICS: CollectDiagnosticsHandler()
+        }
         self._load_state()
 
     def _load_state(self):
@@ -61,13 +168,10 @@ class CommandExecutor:
         self._save_state()
         try:
             action_params = {**cmd.action.parameters, "target": cmd.action.target}
-
-            if cmd.action.type == CommandAction.RESTART_PROCESS:
-                return await self._action_restart_process(action_params)
-                
-            elif cmd.action.type == CommandAction.COLLECT_DIAGNOSTICS:
-                return await self._action_collect_diagnostics(action_params)
-                
+            handler = self._handlers.get(cmd.action.type)
+            
+            if handler:
+                return await handler.execute(action_params)
             else:
                 logger.error(f"Unknown command action: {cmd.action.type}")
                 return ActionResultStatus.FAILED, f"Unsupported action: {cmd.action.type}"
@@ -75,61 +179,3 @@ class CommandExecutor:
         except Exception as e:
             logger.error(f"Execution failed for {cmd.command_id}: {e}", exc_info=True)
             return ActionResultStatus.FAILED, str(e)
-
-    async def _action_restart_process(self, payload: dict) -> Tuple[ActionResultStatus, str]:
-        target = payload.get("target")
-        if not target:
-            return ActionResultStatus.FAILED, "Missing 'target' in payload."
-            
-        logger.info(f"Executing OS Command: systemctl restart {target}")
-        process = await asyncio.create_subprocess_exec(
-            'echo', f'Successfully simulated restart of {target}',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            logger.error(f"Timeout restarting process {target}")
-            return ActionResultStatus.FAILED, f"Restart command for {target} timed out."
-
-        if process.returncode == 0:
-            return ActionResultStatus.SUCCESS, f"Process {target} restarted successfully."
-        else:
-            error_msg = stderr.decode().strip() or stdout.decode().strip()
-            return ActionResultStatus.FAILED, f"Failed to restart {target}: {error_msg}"
-
-    async def _action_collect_diagnostics(self, payload: dict) -> Tuple[ActionResultStatus, str]:
-        level = payload.get("level", "standard")
-        logger.info(f"Executing OS Command: Gathering {level} diagnostics...")
-        
-        try:
-            p_uptime = await asyncio.create_subprocess_exec('uptime', stdout=asyncio.subprocess.PIPE)
-            p_free = await asyncio.create_subprocess_exec('free', '-m', stdout=asyncio.subprocess.PIPE)
-            p_logs = await asyncio.create_subprocess_exec('journalctl', '-n', '20', '--no-pager', stdout=asyncio.subprocess.PIPE)
-
-            try:
-                results = await asyncio.wait_for(
-                    asyncio.gather(p_uptime.communicate(), p_free.communicate(), p_logs.communicate()),
-                    timeout=10.0
-                )
-                (out_uptime, _), (out_free, _), (out_logs, _) = results
-            except asyncio.TimeoutError:
-                for p in [p_uptime, p_free, p_logs]:
-                    try:
-                        p.kill()
-                        await p.wait()
-                    except Exception: pass
-                return ActionResultStatus.FAILED, "Diagnostic collection timed out."
-
-            output = (
-                f"Diagnostic report ({level}):\n"
-                f"- Load Average: {out_uptime.decode().strip()}\n"
-                f"- Memory/Swap Usage:\n{out_free.decode().strip()}\n"
-                f"- Recent Logs:\n{out_logs.decode().strip()}"
-            )
-            return ActionResultStatus.SUCCESS, output
-        except Exception as e:
-            return ActionResultStatus.FAILED, f"Failed to collect diagnostics: {str(e)}"

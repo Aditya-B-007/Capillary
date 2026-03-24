@@ -33,23 +33,32 @@ class FeatureExtractor:
 
 
 class DomainModelLight:
-    def __init__(self, feature_dim, window_size=256, num_trees=50):
-        self.buffer = deque(maxlen=window_size)
-        self.mean = np.zeros(feature_dim)
-        self.std = np.ones(feature_dim)
+    def __init__(self, feature_dim: int, window_size: int = 256, num_trees: int = 50):
         self.rcf = rrcf.RCForest(num_trees=num_trees, tree_size=window_size)
         self.recent_flags = deque(maxlen=5)
+        self.num_trees = num_trees
+        self.count = 0
+        self.mean = np.zeros(feature_dim)
+        self.m2 = np.zeros(feature_dim)
+        self.std = np.ones(feature_dim)
 
-    def update_fast(self, x):
-        self.buffer.append(x)
-        if len(self.buffer) > 10:
-            data = np.array(self.buffer)
-            self.mean = np.mean(data, axis=0)
-            self.std = np.std(data, axis=0) + 1e-6
+    def update_fast(self, x: np.ndarray) -> tuple[np.ndarray, float]:
+        self.count += 1
+        delta = x - self.mean
+        self.mean += delta / self.count
+        delta2 = x - self.mean
+        self.m2 += delta * delta2
+
+        if self.count > 1:
+            variance = self.m2 / self.count
+            self.std = np.sqrt(variance) + 1e-6
+
         z = (x - self.mean) / self.std
-        self.rcf.update(z)
-        rcf_score = self.rcf.codisp() / 50 if len(self.buffer) > 10 else 0.0
+        self.rcf.update(z, self.count)
 
+        rcf_score = 0.0
+        if self.count > 10:
+            rcf_score = self.rcf.codisp(self.count) / self.num_trees
         return z, rcf_score
 
     def is_anomaly(self, rcf_score, rcf_th=3.5):

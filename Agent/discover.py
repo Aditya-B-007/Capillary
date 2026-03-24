@@ -59,7 +59,13 @@ class ControllerDiscovery:
 
             sock.sendto(message, ("<broadcast>", DISCOVERY_PORT))
 
+            deadline = time.time() + DISCOVERY_TIMEOUT
             while True:
+                timeout = deadline - time.time()
+                if timeout <= 0:
+                    break
+                sock.settimeout(timeout)
+
                 data, addr = sock.recvfrom(1024)
                 try:
                     response = json.loads(data.decode())
@@ -67,7 +73,7 @@ class ControllerDiscovery:
                     if response.get("type") == "CONTROLLER_RESPONSE":
                         return addr[0]
 
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     continue
 
         except socket.timeout:

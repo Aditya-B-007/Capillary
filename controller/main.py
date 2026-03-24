@@ -43,7 +43,8 @@ async def main():
         web_port=settings.web_port,
         evaluation_interval_sec=settings.evaluation_interval_sec,
         node_timeout_sec=settings.node_timeout_sec,
-        leader_lock_name=settings.leader_lock_name
+        leader_lock_name=settings.leader_lock_name,
+        # Rules will be loaded from defaults in ControllerConfig
     )
     
     logger.info(f"Starting Capillary Controller: {config.controller_id}")
@@ -76,7 +77,7 @@ async def main():
         intent = ActionIntent(
             agent_id=node_id,
             action=CommandAction.RESTART_PROCESS,
-            payload={"target": "worker_process", "force": True},
+            payload={"target": config.rules.target_process, "force": True},
             reason="Manual restart triggered via dashboard"
         )
         await dispatcher.dispatch(intent, cluster_state)
@@ -99,7 +100,7 @@ async def main():
         await dispatcher.dispatch(intent, cluster_state)
         return {"status": "sent", "node_id": req.node_id, "action": req.action}
 
-    rule_engine = RuleEngine()
+    rule_engine = RuleEngine(config=config)
     runtime = ControllerRuntime(
         config=config,
         messaging=messaging_client,

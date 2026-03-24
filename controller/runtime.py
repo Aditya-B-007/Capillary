@@ -27,6 +27,7 @@ class ControllerRuntime:
         
         self._stop_event = asyncio.Event()
         self._tasks = []
+        self._dispatch_tasks: Set[asyncio.Task] = set()
         self._ws_broadcast_queues: Set[asyncio.Queue] = set()
 
     async def start(self) -> None:
@@ -45,6 +46,8 @@ class ControllerRuntime:
         self._stop_event.set()
         
         for task in self._tasks:
+            task.cancel()
+        for task in self._dispatch_tasks:
             task.cancel()
             
         await self.messaging.disconnect()
@@ -102,7 +105,9 @@ class ControllerRuntime:
                 self.state.evaluate_liveness()
                 intents = self.rules.evaluate_cluster(self.state)
                 for intent in intents:
-                    asyncio.create_task(self._safe_dispatch(intent))
+                    task = asyncio.create_task(self._safe_dispatch(intent))
+                    self._dispatch_tasks.add(task)
+                    task.add_done_callback(self._dispatch_tasks.discard)
                     
             except Exception as e:
                 logger.error(f"Error during reconciliation cycle: {e}", exc_info=True)

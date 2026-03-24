@@ -28,9 +28,10 @@ class NodeRecord:
     pending_commands: Dict[str, CommandAction] = field(default_factory=dict)
 
 class ClusterState:
-    def __init__(self, timeout_sec: float, memory_window_size: int = 5):
+    def __init__(self, timeout_sec: float, memory_window_size: int = 5, eviction_sec: float = 300.0):
         self.timeout_sec = timeout_sec
         self.suspect_sec = timeout_sec / 2.0
+        self.eviction_sec = eviction_sec
         self.memory_window_size = memory_window_size
         self._nodes: Dict[str, NodeRecord] = {}
 
@@ -54,11 +55,14 @@ class ClusterState:
 
     def evaluate_liveness(self) -> None:
         now = time.monotonic()
+        dead_nodes = []
 
         for node_id, record in self._nodes.items():
             elapsed = now - record.last_seen_monotonic
 
-            if elapsed >= self.timeout_sec:
+            if elapsed >= self.eviction_sec:
+                dead_nodes.append(node_id)
+            elif elapsed >= self.timeout_sec:
                 if record.liveness != LivenessState.UNRESPONSIVE:
                     logger.warning(f"{node_id} timed out ({elapsed:.1f}s). Marking UNRESPONSIVE.")
                 record.liveness = LivenessState.UNRESPONSIVE
@@ -70,6 +74,10 @@ class ClusterState:
 
             else:
                 record.liveness = LivenessState.ONLINE
+                
+        for node_id in dead_nodes:
+            logger.info(f"Evicting long-dead node {node_id} from state (inactive for {now - self._nodes[node_id].last_seen_monotonic:.1f}s).")
+            del self._nodes[node_id]
 
     def can_remediate(self, node_id: str, action: CommandAction) -> bool:
         record = self._nodes.get(node_id)

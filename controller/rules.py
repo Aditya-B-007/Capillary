@@ -1,12 +1,15 @@
 import logging
 import statistics
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass
 from common.models import CommandAction
 from controller.state import ClusterState, NodeRecord, LivenessState
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from common.config import ControllerConfig
 
 
 @dataclass(frozen=True)
@@ -143,14 +146,25 @@ class UnresponsiveNodeRule(Rule):
 
 
 class RuleEngine:
-    def __init__(self, rules: Optional[List[Rule]] = None):
-        self.rules = rules or [
+    def __init__(self, config: "ControllerConfig"):
+        rule_config = config.rules
+        self.rules: List[Rule] = [
             UnresponsiveNodeRule(),
-            HighMemoryRule(threshold_percent=92.0),
-            HighCPURule(threshold_percent=85.0),
-            LowCPURule(threshold_percent=30.0),
+            HighMemoryRule(
+                threshold_percent=rule_config.high_mem_threshold,
+                target_process=rule_config.target_process
+            ),
+            HighCPURule(
+                threshold_percent=rule_config.high_cpu_threshold,
+                target_process=rule_config.target_process,
+                scale_factor=rule_config.scale_down_factor
+            ),
+            LowCPURule(
+                threshold_percent=rule_config.low_cpu_threshold,
+                target_process=rule_config.target_process
+            ),
         ]
-        logger.info(f"RuleEngine initialized with {len(self.rules)} rules.")
+        logger.info(f"RuleEngine initialized with {len(self.rules)} rules from config.")
 
     def evaluate_cluster(self, state: ClusterState) -> List[ActionIntent]:
         intents: List[ActionIntent] = []
