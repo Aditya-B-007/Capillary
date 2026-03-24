@@ -62,6 +62,8 @@ class AgentRuntime:
                     node_id=self.config.agent_id,
                     status=self._status,
                     metrics=current_metrics
+                    is_anomaly=prediction_result["anomaly"],
+                    domain_scores=prediction_result["domain_scores"]
                 )
                 try:
                     self._telemetry_queue.put_nowait(event)
