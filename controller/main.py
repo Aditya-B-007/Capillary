@@ -5,6 +5,7 @@ import signal
 import socket
 import sys
 from typing import Set, Dict, Any
+from urllib.parse import urlparse
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -32,12 +33,14 @@ class ManualCommandRequest(BaseModel):
 async def broadcast_presence(redis_url: str):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    host = redis_url.split("://")[1].split(":")[0]
+    
+    parsed_url = urlparse(redis_url)
+    host = parsed_url.hostname or redis_url.split("://")[1].split(":")[0]
     
     message = {
         "type": "CONTROLLER_ANNOUNCE",
         "redis_host": host,
-        "redis_port": 6379
+        "redis_port": parsed_url.port or 6379
     }
     
     while True:

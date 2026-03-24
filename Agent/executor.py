@@ -8,12 +8,9 @@ from typing import Tuple, Set, List
 from common.models import CommandEvent, CommandAction, ActionResultStatus
 
 logger = logging.getLogger(__name__)
-
-
 class ActionHandler(abc.ABC):
     @abc.abstractmethod
     async def execute(self, payload: dict) -> Tuple[ActionResultStatus, str]:
-        """Executes the specific action and returns the status and output string."""
         pass
 
 
@@ -109,6 +106,21 @@ class CollectDiagnosticsHandler(ActionHandler):
             return ActionResultStatus.FAILED, f"Diagnostic command not found on {sys.platform}: {str(e)}"
         except Exception as e:
             return ActionResultStatus.FAILED, f"Failed to collect diagnostics: {str(e)}"
+        
+class ScaleDownHandler(ActionHandler):
+    async def execute(self, payload: dict) -> Tuple[ActionResultStatus, str]:
+        target = payload.get("target", "worker_process")
+        factor = payload.get("factor", 0.5)
+        logger.info(f"Executing Scale Down for {target} by factor {factor}")
+        await asyncio.sleep(0.5) # Simulate work
+        return ActionResultStatus.SUCCESS, f"Scaled down {target} capacity by {factor}x to reduce CPU load."
+
+class ScaleUpHandler(ActionHandler):
+    async def execute(self, payload: dict) -> Tuple[ActionResultStatus, str]:
+        target = payload.get("target", "worker_process")
+        logger.info(f"Executing Scale Up (Restoration) for {target}")
+        await asyncio.sleep(0.5) 
+        return ActionResultStatus.SUCCESS, f"Restored {target} capacity to normal levels."
 
 
 class CommandExecutor:
@@ -118,7 +130,9 @@ class CommandExecutor:
         self._highest_seen_epoch: int = 0
         self._handlers = {
             CommandAction.RESTART_PROCESS: RestartProcessHandler(),
-            CommandAction.COLLECT_DIAGNOSTICS: CollectDiagnosticsHandler()
+            CommandAction.COLLECT_DIAGNOSTICS: CollectDiagnosticsHandler(),
+            CommandAction.SCALE_DOWN: ScaleDownHandler(),
+            CommandAction.SCALE_UP: ScaleUpHandler()
         }
         self._load_state()
 

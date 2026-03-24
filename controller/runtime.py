@@ -6,6 +6,7 @@ from common.models import TelemetryEvent, ActionResultEvent
 from controller.state import ClusterState
 from controller.rules import RuleEngine, ActionIntent
 from controller.dispatcher import CommandDispatcher
+from controller.predictor_heavy import HeavyPredictorController  # ADDED IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class ControllerRuntime:
         self.state = state
         self.rules = rules
         self.dispatcher = dispatcher
+        self.predictor = HeavyPredictorController()
         
         self._stop_event = asyncio.Event()
         self._tasks = []
@@ -70,6 +72,13 @@ class ControllerRuntime:
             event = TelemetryEvent.model_validate_json(payload)
             self.state.process_telemetry(event)
             self._broadcast({"type": "telemetry", "data": event.model_dump()})
+            prediction_payload = {
+                "metrics": event.metrics,
+                "anomaly": False, # Future enhancement: pull lightweight anomaly flag from event
+                "domain_scores": {} 
+            }
+            await self.predictor.process_agent_payload(prediction_payload)
+            
         except Exception as e:
             logger.error(f"Failed to process telemetry payload: {e}")
 
@@ -124,4 +133,4 @@ class ControllerRuntime:
                     timeout=sleep_duration
                 )
             except asyncio.TimeoutError:
-                pass 
+                pass

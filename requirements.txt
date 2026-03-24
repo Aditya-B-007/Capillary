@@ -8,3 +8,4 @@ websockets
 numpy
 rrcf
 eif
+scikit-learn

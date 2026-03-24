@@ -1,7 +1,8 @@
 import socket
 import json
+from common.config import settings
 
-PORT = 9999 #Import from the config file
+PORT = settings.discovery_port
 
 def listen():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

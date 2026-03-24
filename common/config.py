@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     heartbeat_interval_sec: float = 5.0
     evaluation_interval_sec: float = 2.0
     node_timeout_sec: float = 15.0
+    discovery_port: int = 9999
 
     model_config = SettingsConfigDict(
         env_file=".env",

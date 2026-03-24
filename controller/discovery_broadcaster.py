@@ -1,14 +1,19 @@
 import socket
 import json
 import time
+from urllib.parse import urlparse
+from common.config import settings
 
 BROADCAST_IP = "255.255.255.255"
-PORT = 9999 #Import from config file
+PORT = settings.discovery_port
+
+parsed_broker = urlparse(settings.broker_url)
+redis_port = parsed_broker.port or 6379
 
 MESSAGE = {
     "type": "CONTROLLER_ANNOUNCE",
     "redis_host": "192.168.1.10",   # change dynamically if needed
-    "redis_port": 6379 #Import from the config file
+    "redis_port": redis_port
 }
 
 def broadcast():
