@@ -52,6 +52,8 @@ Capillary is highly configurable. You can adjust cluster behaviors by passing en
 | HEARTBEAT_INTERVAL_SEC | 5.0 | How often the edge agents push telemetry payloads to the controller. |
 | EVALUATION_INTERVAL_SEC | 2.0 | How often the controller's Rule Engine evaluates cluster state for remediation. |
 | NODE_TIMEOUT_SEC | 15.0 | Time before the controller marks an agent as UNRESPONSIVE. |
+
+
 Rule Engine Thresholds
 The automated remediation rules can be tuned inside common/config.py via the RuleConfig class:
  * high_mem_threshold: Default 92.0% (Triggers Process Restart)
@@ -59,6 +61,15 @@ The automated remediation rules can be tuned inside common/config.py via the Rul
  * low_cpu_threshold: Default 30.0% (Triggers Scale Up / Recovery)
  * scale_down_factor: Default 0.5x
 
+
+🌐 Distributed LAN Deployment
+
+Capillary can monitor physical machines across your network:
+
+1. Configure Controller IP: Update redis_host in controller/discovery_broadcaster.py with the Controller machine's actual LAN IP.
+2. Run Controller (Machine A): docker-compose up redis controller
+3. Run Agents (Machines B, C, etc.): docker-compose up agent
+Note: Agents automatically use pid: "host" to monitor the actual hardware they reside on.
 
 🛡️ License
 MIT License
