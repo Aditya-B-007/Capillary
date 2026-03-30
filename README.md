@@ -1,5 +1,13 @@
 Capillary is a distributed system monitoring and control platform designed to run lightweight agents on multiple edge nodes. It aggregates system state, detects abnormal behavior using multi-tiered Machine Learning (Lightweight RCF on the edge, Heavyweight PCA/EIF on the controller), and executes safe corrective actions through a centralized controller.
 
+Automatically detect and fix server issues before they crash.
+
+## What it does
+- Monitors system health in real-time
+- Detects anomalies (CPU, memory, etc.)
+- Automatically takes corrective actions (restart, cleanup)
+- Stores incident reports for debugging
+
 🌟 Key Features
  * Real-time Telemetry: Agents collect host-level CPU, memory, disk, and network metrics and stream them to the central controller.
  * Multi-Tier Anomaly Detection: * Edge (Agents): Uses Lightweight Random Cut Forests (RCF) for immediate local anomaly detection.
